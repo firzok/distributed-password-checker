@@ -16,15 +16,17 @@ type SearchQuery struct {
 }
 
 func searchPasswordInFile(password string, file string) string {
-	f, err := os.Open(file)
+	f, err := os.Open("./passwordSplitFiles/" + file)
 	if err != nil {
+		fmt.Println("Error opening file")
 	}
 	defer f.Close()
 
 	// Splits on newlines by default.
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		if strings.Contains(scanner.Text(), password) {
+		log.Printf(scanner.Text())
+		if scanner.Text() == password {
 			return "1"
 		}
 	}
@@ -37,6 +39,8 @@ func performSlaveoperations(c net.Conn, newsearchchan <-chan SearchQuery) {
 		case search := <-newsearchchan:
 			log.Printf("New Search: %s in %s", search.password, search.fileName)
 			ret := searchPasswordInFile(search.password, search.fileName)
+
+			log.Printf(ret)
 			//send result to server (either found or not found)
 			c.Write([]byte(ret))
 		}

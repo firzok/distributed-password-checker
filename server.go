@@ -14,9 +14,33 @@ type Slave struct {
 
 var slaves []Slave
 
-func sendPasswordToSlaves(password string) {
+func stopSearchWhenFound(c net.Conn, finishSearchChan chan bool) {
+	for {
+		select {
+		case searchFinished := <-finishSearchChan:
+			if searchFinished {
+				c.Write([]byte("You Password has been PWNED!!!"))
+				c.Close()
+			}
+		}
+	}
+}
+
+func sendPasswordToSlaves(password string, finishSearchChan chan bool) {
+	buf := make([]byte, 4096)
 	for _, s := range slaves {
 		s.conn.Write([]byte("s:" + password + ":" + s.files[0]))
+		n, err := s.conn.Read(buf)
+		if err != nil || n == 0 {
+			s.conn.Close()
+			break
+		}
+		result := string(buf[0:n])
+
+		if result == "1" {
+			finishSearchChan <- true
+		}
+
 	}
 }
 
@@ -76,7 +100,11 @@ func handleClientConnection(c net.Conn) {
 		password := string(buf[0:n])
 
 		fmt.Println(password)
-		sendPasswordToSlaves(password)
+
+		finishSearchChan := make(chan bool)
+		go sendPasswordToSlaves(password, finishSearchChan)
+		go stopSearchWhenFound(c, finishSearchChan)
+
 	}
 }
 
