@@ -23,7 +23,6 @@ func getPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func sendPasswordToServer(password string) {
-	fmt.Println("SendPassword")
 	conn, err := net.Dial("tcp", "127.0.0.1:8003")
 	if err != nil {
 		fmt.Println("ERROR")
