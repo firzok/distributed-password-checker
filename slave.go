@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"strings"
 )
 
@@ -13,12 +15,30 @@ type SearchQuery struct {
 	fileName string
 }
 
-func performSlaveoperations(searchchan <-chan SearchQuery) {
+func searchPasswordInFile(password string, file string) string {
+	f, err := os.Open(file)
+	if err != nil {
+	}
+	defer f.Close()
+
+	// Splits on newlines by default.
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), password) {
+			return "1"
+		}
+	}
+	return "0"
+}
+
+func performSlaveoperations(c net.Conn, newsearchchan <-chan SearchQuery) {
 	for {
 		select {
-		case search := <-searchchan:
+		case search := <-newsearchchan:
 			log.Printf("New Search: %s in %s", search.password, search.fileName)
-
+			ret := searchPasswordInFile(search.password, search.fileName)
+			//send result to server (either found or not found)
+			c.Write([]byte(ret))
 		}
 	}
 }
@@ -70,24 +90,8 @@ func main() {
 
 	searchchan := make(chan SearchQuery)
 
-	go performSlaveoperations(searchchan)
+	go performSlaveoperations(conn, searchchan)
 
 	handleSlaveOperations(conn, searchchan)
 
-	// f, err := os.Open("TestPage.txt")
-	// if err != nil {
-	// }
-	// defer f.Close()
-	//
-	// // Splits on newlines by default.
-	// scanner := bufio.NewScanner(f)
-	// for scanner.Scan() {
-	// 	if strings.Contains(scanner.Text(), "sample") {
-	// 		//fmt.Print("Found!")
-	// 	}
-	// }
-	// myfile, _ := ioutil.ReadFile("TestPage.txt")
-	// if strings.Contains(string(myfile), "sample") {
-	// 	fmt.Print("Found!")
-	// }
 }
