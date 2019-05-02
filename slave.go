@@ -5,7 +5,44 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"strings"
 )
+
+type SearchQuery struct {
+	password string
+	fileName string
+}
+
+func performSlaveoperations(searchchan <-chan SearchQuery) {
+	for {
+		select {
+		case search := <-searchchan:
+			log.Printf("New Search: %s in %s", search.password, search.fileName)
+
+		}
+	}
+}
+
+func handleSlaveOperations(c net.Conn, searchchan chan SearchQuery) {
+	buf := make([]byte, 4096)
+	defer c.Close()
+
+	for {
+		n, err := c.Read(buf)
+		if err != nil || n == 0 {
+			c.Close()
+			break
+		}
+		command := strings.Split(string(buf[0:n]), ":")
+
+		if command[0] == "s" {
+			search := SearchQuery{command[1], command[2]}
+			searchchan <- search
+
+		}
+
+	}
+}
 
 func main() {
 
@@ -29,9 +66,14 @@ func main() {
 		fmt.Println("ERROR: Connecting to Server")
 		return
 	}
-
 	conn.Write([]byte(fileNames))
-	conn.Close()
+
+	searchchan := make(chan SearchQuery)
+
+	go performSlaveoperations(searchchan)
+
+	handleSlaveOperations(conn, searchchan)
+
 	// f, err := os.Open("TestPage.txt")
 	// if err != nil {
 	// }

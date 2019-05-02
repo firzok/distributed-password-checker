@@ -8,17 +8,19 @@ import (
 )
 
 type Slave struct {
-	files      []string
-	connection net.Conn
+	files []string
+	conn  net.Conn
 }
 
 var slaves []Slave
 
-// func sendPasswordToSlaves(password) {
-//
-// }
+func sendPasswordToSlaves(password string) {
+	for _, s := range slaves {
+		s.conn.Write([]byte("s:" + password + ":" + s.files[0]))
+	}
+}
 
-func handleSlaveConnection(c net.Conn, addchan chan<- Slave, rmchan chan<- Slave) {
+func handleSlaveConnection(c net.Conn, addchan chan Slave, rmchan chan Slave) {
 	buf := make([]byte, 4096)
 	defer c.Close()
 	for {
@@ -33,8 +35,9 @@ func handleSlaveConnection(c net.Conn, addchan chan<- Slave, rmchan chan<- Slave
 		currentSlave := Slave{filesArray, c}
 		slaves = append(slaves, currentSlave)
 		fmt.Println(filesArray)
-		addchan <- currentSlave
-		fmt.Println(filesArray)
+
+		// addchan <- currentSlave
+		// fmt.Println(filesArray)
 		defer func() {
 			fmt.Println("Slave has left.")
 			log.Printf("Connection from %v closed.\n", c.RemoteAddr())
@@ -62,7 +65,7 @@ func handleSlaves() {
 	}
 }
 
-func handleConnection(c net.Conn) {
+func handleClientConnection(c net.Conn) {
 	buf := make([]byte, 4096)
 	for {
 		n, err := c.Read(buf)
@@ -73,7 +76,7 @@ func handleConnection(c net.Conn) {
 		password := string(buf[0:n])
 
 		fmt.Println(password)
-		// sendPasswordToSlaves(password)
+		sendPasswordToSlaves(password)
 	}
 }
 
@@ -90,7 +93,7 @@ func main() {
 		if err != nil {
 			// handle error
 		}
-		go handleConnection(conn)
+		go handleClientConnection(conn)
 	}
 
 }
