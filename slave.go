@@ -35,7 +35,7 @@ func searchPasswordInFile(password string, file string, stopSearchChan chan stri
 			}
 		default:
 			//check for password
-			// fmt.Println(scanner.Text())
+			fmt.Println(scanner.Text())
 			if scanner.Text() == password {
 				return 1
 			}
@@ -50,7 +50,7 @@ func performSlaveoperations(c net.Conn, newsearchchan chan SearchQuery, stopSear
 	for {
 		select {
 		case search := <-newsearchchan:
-			log.Printf("New Search: %s in %s", search.password, search.fileName)
+			log.Printf("New Search: " + search.password + " in " + search.fileName)
 			ret := searchPasswordInFile(search.password, search.fileName, stopSearchChan)
 
 			//send result to server (either found or not found)
@@ -59,6 +59,7 @@ func performSlaveoperations(c net.Conn, newsearchchan chan SearchQuery, stopSear
 				c.Write([]byte("pf:" + search.password + ":" + search.fileName))
 			} else if ret == 0 {
 				fmt.Println("Password NOT Found")
+				fmt.Println(search.fileName)
 				c.Write([]byte("pnf:" + search.password + ":" + search.fileName))
 			} else if ret == 2 {
 				fmt.Println("Password Found By Some Other Slave")
@@ -69,17 +70,18 @@ func performSlaveoperations(c net.Conn, newsearchchan chan SearchQuery, stopSear
 }
 
 func handleSlaveOperations(c net.Conn, searchchan chan SearchQuery, stopSearchChan chan string) {
-	buf := make([]byte, 4096)
+
 	defer c.Close()
 
 	for {
+		buf := make([]byte, 4096)
 		n, err := c.Read(buf)
 		if err != nil || n == 0 {
 			c.Close()
 			break
 		}
 		command := strings.Split(string(buf[0:n]), ":")
-
+		fmt.Println(command)
 		if command[0] == "s" {
 			search := SearchQuery{command[1], command[2]}
 			searchchan <- search
