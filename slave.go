@@ -15,7 +15,7 @@ type SearchQuery struct {
 	fileName string
 }
 
-func searchPasswordInFile(password string, file string) int {
+func searchPasswordInFile(password string, file string, stopSearchChan chan SearchQuery) int {
 	f, err := os.Open("./passwordSplitFiles/" + file)
 	if err != nil {
 		fmt.Println("Error opening file")
@@ -24,21 +24,34 @@ func searchPasswordInFile(password string, file string) int {
 
 	// Splits on newlines by default.
 	scanner := bufio.NewScanner(f)
+	i := 0
 	for scanner.Scan() {
-		log.Printf(scanner.Text())
+		fmt.Println(scanner.Text())
 		if scanner.Text() == password {
 			return 1
 		}
+		if i%500 == 0 {
+			select {
+			case stopSearch := <-stopSearchChan:
+				if stopSearch.password == password {
+					break
+				}
+
+			}
+
+		}
+
+		i++
 	}
 	return 0
 }
 
-func performSlaveoperations(c net.Conn, newsearchchan <-chan SearchQuery) {
+func performSlaveoperations(c net.Conn, newsearchchan chan SearchQuery, stopSearchChan chan SearchQuery) {
 	for {
 		select {
 		case search := <-newsearchchan:
 			log.Printf("New Search: %s in %s", search.password, search.fileName)
-			ret := searchPasswordInFile(search.password, search.fileName)
+			ret := searchPasswordInFile(search.password, search.fileName, stopSearchChan)
 
 			//send result to server (either found or not found)
 			if ret == 1 {
@@ -68,6 +81,8 @@ func handleSlaveOperations(c net.Conn, searchchan chan SearchQuery) {
 		if command[0] == "s" {
 			search := SearchQuery{command[1], command[2]}
 			searchchan <- search
+
+		} else if command[0] == "pf" {
 
 		}
 
@@ -99,8 +114,9 @@ func main() {
 	conn.Write([]byte(fileNames))
 
 	searchchan := make(chan SearchQuery)
+	stopSearchChan := make(chan SearchQuery)
 
-	go performSlaveoperations(conn, searchchan)
+	go performSlaveoperations(conn, searchchan, stopSearchChan)
 
 	handleSlaveOperations(conn, searchchan)
 

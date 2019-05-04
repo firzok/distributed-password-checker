@@ -49,6 +49,10 @@ func passwordFound(password string) {
 			c.conn.Write([]byte("pf"))
 		}
 	}
+
+	for k, v := range slaves {
+		k.Write([]byte("pf:" + password))
+	}
 }
 
 func passwordNotFound(password string) {
