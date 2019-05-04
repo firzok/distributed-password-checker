@@ -8,73 +8,104 @@ import (
 )
 
 type Slave struct {
-	files []string
-	conn  net.Conn
+	files         []string
+	conn          net.Conn
+	passwordFound bool
+	freeToSearch  bool
 }
 
-var slaves []Slave
+type Client struct {
+	password string
+	conn     net.Conn
+}
+
+var clients = make(map[net.Conn]Client)
+var slaves = make(map[net.Conn]Slave)
 
 func stopSearchWhenFound(c net.Conn, finishSearchChan chan bool) {
 	for {
 		select {
 		case searchFinished := <-finishSearchChan:
+			// fmt.Println("Search Finished")
 			if searchFinished {
-				c.Write([]byte("You Password has been PWNED!!!"))
+				// fmt.Println("Password found")
+				c.Write([]byte("1"))
 				c.Close()
 			}
 		}
 	}
 }
 
-func sendPasswordToSlaves(password string, finishSearchChan chan bool) {
-	buf := make([]byte, 4096)
-	for _, s := range slaves {
-		s.conn.Write([]byte("s:" + password + ":" + s.files[0]))
-		n, err := s.conn.Read(buf)
-		if err != nil || n == 0 {
-			s.conn.Close()
-			break
-		}
-		result := string(buf[0:n])
-
-		if result == "1" {
-			finishSearchChan <- true
-		}
-
+func sendPasswordToSlaves(password string) {
+	for k, v := range slaves {
+		k.Write([]byte("s:" + password + ":" + v.files[0]))
 	}
 }
 
-func handleSlaveConnection(c net.Conn, addchan chan Slave, rmchan chan Slave) {
+func passwordFound(password string) {
+	for _, c := range clients {
+		if c.password == password {
+			fmt.Println("Result sent to Client")
+			c.conn.Write([]byte("pf"))
+		}
+	}
+}
+
+func passwordNotFound(password string) {
+	for _, c := range clients {
+		if c.password == password {
+			fmt.Println("Result sent to Client")
+			c.conn.Write([]byte("pnf"))
+		}
+	}
+}
+
+func handleSlaveConnection(c net.Conn) {
+
+	//Get slave filesArray
 	buf := make([]byte, 4096)
 	defer c.Close()
+	n, err := c.Read(buf)
+	if err != nil || n == 0 {
+		c.Close()
+	}
+	files := string(buf[0:n])
+
+	filesArray := strings.Split(files, ",")
+	currentSlave := Slave{filesArray, c, false, true}
+	slaves[c] = currentSlave
+	fmt.Println("Files: ", filesArray)
+
 	for {
 		n, err := c.Read(buf)
 		if err != nil || n == 0 {
 			c.Close()
 			break
 		}
-		files := string(buf[0:n])
+		message := string(buf[0:n])
+		fmt.Println("Message from Slave: ", message)
 
-		filesArray := strings.Split(files, ",")
-		currentSlave := Slave{filesArray, c}
-		slaves = append(slaves, currentSlave)
-		fmt.Println(filesArray)
+		msgSplits := strings.Split(message, ":")
 
-		// addchan <- currentSlave
-		// fmt.Println(filesArray)
+		//pf = Password Found
+		if msgSplits[0] == "pf" {
+			fmt.Println("Password Found")
+			passwordFound(msgSplits[1])
+		} else if msgSplits[0] == "pnf" {
+			fmt.Println("Password NOT Found")
+			passwordNotFound(msgSplits[1])
+		}
+
 		defer func() {
 			fmt.Println("Slave has left.")
 			log.Printf("Connection from %v closed.\n", c.RemoteAddr())
-			rmchan <- currentSlave
+			delete(slaves, c)
 		}()
 
 	}
 }
 
 func handleSlaves() {
-
-	addchan := make(chan Slave)
-	rmchan := make(chan Slave)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:8002")
 	if err != nil {
@@ -85,7 +116,7 @@ func handleSlaves() {
 		if err != nil {
 			// handle error
 		}
-		go handleSlaveConnection(conn, addchan, rmchan)
+		go handleSlaveConnection(conn)
 	}
 }
 
@@ -99,13 +130,21 @@ func handleClientConnection(c net.Conn) {
 		}
 		password := string(buf[0:n])
 
-		fmt.Println(password)
+		fmt.Println("Client Sent: ", password)
 
-		finishSearchChan := make(chan bool)
-		go sendPasswordToSlaves(password, finishSearchChan)
-		go stopSearchWhenFound(c, finishSearchChan)
+		currentClient := Client{password, c}
+		//add to map
+		clients[c] = currentClient
 
+		go sendPasswordToSlaves(password)
+
+		defer func() {
+			fmt.Println("Client has left.")
+			log.Printf("Connection from %v closed.\n", c.RemoteAddr())
+			delete(clients, c)
+		}()
 	}
+
 }
 
 func main() {

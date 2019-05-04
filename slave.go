@@ -15,7 +15,7 @@ type SearchQuery struct {
 	fileName string
 }
 
-func searchPasswordInFile(password string, file string) string {
+func searchPasswordInFile(password string, file string) int {
 	f, err := os.Open("./passwordSplitFiles/" + file)
 	if err != nil {
 		fmt.Println("Error opening file")
@@ -27,10 +27,10 @@ func searchPasswordInFile(password string, file string) string {
 	for scanner.Scan() {
 		log.Printf(scanner.Text())
 		if scanner.Text() == password {
-			return "1"
+			return 1
 		}
 	}
-	return "0"
+	return 0
 }
 
 func performSlaveoperations(c net.Conn, newsearchchan <-chan SearchQuery) {
@@ -40,9 +40,15 @@ func performSlaveoperations(c net.Conn, newsearchchan <-chan SearchQuery) {
 			log.Printf("New Search: %s in %s", search.password, search.fileName)
 			ret := searchPasswordInFile(search.password, search.fileName)
 
-			log.Printf(ret)
 			//send result to server (either found or not found)
-			c.Write([]byte(ret))
+			if ret == 1 {
+				fmt.Println("Password Found")
+				c.Write([]byte("pf:" + search.password + ":" + search.fileName))
+			} else {
+				fmt.Println("Password NOT Found")
+				c.Write([]byte("pnf:" + search.password + ":" + search.fileName))
+			}
+
 		}
 	}
 }

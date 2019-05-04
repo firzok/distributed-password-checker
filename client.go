@@ -17,19 +17,36 @@ func getPassword(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		fmt.Println("password:", r.Form["password"])
 
-		sendPasswordToServer(r.Form["password"][0])
+		result := sendPasswordToServer(r.Form["password"][0])
+		if result == "pf" {
+			w.Write([]byte("You password has been PWNED."))
+		} else {
+			w.Write([]byte("You password is secure."))
+		}
 
 	}
 }
 
-func sendPasswordToServer(password string) {
+func sendPasswordToServer(password string) string {
 	conn, err := net.Dial("tcp", "127.0.0.1:8003")
 	if err != nil {
 		fmt.Println("ERROR")
-		return
+		return "pf"
 	}
 	defer conn.Close()
 	conn.Write([]byte(password))
+
+	buf := make([]byte, 4096)
+	n, err := conn.Read(buf)
+	if err != nil || n == 0 {
+		fmt.Println("ERROR: Getting result from server.")
+	}
+
+	result := string(buf[0:n])
+	fmt.Println(result)
+
+	return result
+
 }
 
 func main() {
