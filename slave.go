@@ -15,7 +15,7 @@ type SearchQuery struct {
 	fileName string
 }
 
-func searchPasswordInFile(password string, file string, stopSearchChan chan SearchQuery) int {
+func searchPasswordInFile(password string, file string, stopSearchChan chan string) int {
 	f, err := os.Open("./passwordSplitFiles/" + file)
 	if err != nil {
 		fmt.Println("Error opening file")
@@ -24,29 +24,29 @@ func searchPasswordInFile(password string, file string, stopSearchChan chan Sear
 
 	// Splits on newlines by default.
 	scanner := bufio.NewScanner(f)
-	i := 0
 	for scanner.Scan() {
-		fmt.Println(scanner.Text())
-		if scanner.Text() == password {
-			return 1
-		}
-		if i%500 == 0 {
-			select {
-			case stopSearch := <-stopSearchChan:
-				if stopSearch.password == password {
-					break
-				}
-
+		select {
+		//Some other slave found the password so break loop
+		case stopSearchForPassword := <-stopSearchChan:
+			log.Println("Stop search request")
+			if stopSearchForPassword == password {
+				fmt.Println("Search STOPPED")
+				return 2
 			}
-
+		default:
+			//check for password
+			// fmt.Println(scanner.Text())
+			if scanner.Text() == password {
+				return 1
+			}
 		}
 
-		i++
 	}
+
 	return 0
 }
 
-func performSlaveoperations(c net.Conn, newsearchchan chan SearchQuery, stopSearchChan chan SearchQuery) {
+func performSlaveoperations(c net.Conn, newsearchchan chan SearchQuery, stopSearchChan chan string) {
 	for {
 		select {
 		case search := <-newsearchchan:
@@ -57,16 +57,18 @@ func performSlaveoperations(c net.Conn, newsearchchan chan SearchQuery, stopSear
 			if ret == 1 {
 				fmt.Println("Password Found")
 				c.Write([]byte("pf:" + search.password + ":" + search.fileName))
-			} else {
+			} else if ret == 0 {
 				fmt.Println("Password NOT Found")
 				c.Write([]byte("pnf:" + search.password + ":" + search.fileName))
+			} else if ret == 2 {
+				fmt.Println("Password Found By Some Other Slave")
 			}
 
 		}
 	}
 }
 
-func handleSlaveOperations(c net.Conn, searchchan chan SearchQuery) {
+func handleSlaveOperations(c net.Conn, searchchan chan SearchQuery, stopSearchChan chan string) {
 	buf := make([]byte, 4096)
 	defer c.Close()
 
@@ -83,7 +85,7 @@ func handleSlaveOperations(c net.Conn, searchchan chan SearchQuery) {
 			searchchan <- search
 
 		} else if command[0] == "pf" {
-
+			stopSearchChan <- command[1]
 		}
 
 	}
@@ -114,10 +116,10 @@ func main() {
 	conn.Write([]byte(fileNames))
 
 	searchchan := make(chan SearchQuery)
-	stopSearchChan := make(chan SearchQuery)
+	stopSearchChan := make(chan string)
 
 	go performSlaveoperations(conn, searchchan, stopSearchChan)
 
-	handleSlaveOperations(conn, searchchan)
+	handleSlaveOperations(conn, searchchan, stopSearchChan)
 
 }

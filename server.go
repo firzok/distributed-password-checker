@@ -7,16 +7,17 @@ import (
 	"strings"
 )
 
+//Slave is struct for currently connected slaves
 type Slave struct {
-	files         []string
-	conn          net.Conn
-	passwordFound bool
-	freeToSearch  bool
+	files        []string //Files that slave have
+	conn         net.Conn //connection for communication
+	freeToSearch bool     //either free to search or currently searching
 }
 
+//Client is struct for clients being currently connected to server
 type Client struct {
-	password string
-	conn     net.Conn
+	password string   //Password to be searched
+	conn     net.Conn // Connection for sending result back to client
 }
 
 var clients = make(map[net.Conn]Client)
@@ -38,11 +39,15 @@ func stopSearchWhenFound(c net.Conn, finishSearchChan chan bool) {
 
 func sendPasswordToSlaves(password string) {
 	for k, v := range slaves {
-		k.Write([]byte("s:" + password + ":" + v.files[0]))
+		if v.freeToSearch == true {
+			fmt.Println("Password sent to slave")
+			k.Write([]byte("s:" + password + ":" + v.files[0]))
+			v.freeToSearch = false
+		}
 	}
 }
 
-func passwordFound(password string) {
+func passwordFoundBySlave(password string, slaveConn net.Conn) {
 	for _, c := range clients {
 		if c.password == password {
 			fmt.Println("Result sent to Client")
@@ -50,8 +55,12 @@ func passwordFound(password string) {
 		}
 	}
 
-	for k, v := range slaves {
-		k.Write([]byte("pf:" + password))
+	//Telling all slaves(except the one that found it) that password is found so stop searching
+	for k := range slaves {
+		if k != slaveConn {
+			fmt.Println("Stop search request sent to slave")
+			k.Write([]byte("pf:" + password))
+		}
 	}
 }
 
@@ -76,7 +85,7 @@ func handleSlaveConnection(c net.Conn) {
 	files := string(buf[0:n])
 
 	filesArray := strings.Split(files, ",")
-	currentSlave := Slave{filesArray, c, false, true}
+	currentSlave := Slave{filesArray, c, true}
 	slaves[c] = currentSlave
 	fmt.Println("Files: ", filesArray)
 
@@ -94,15 +103,14 @@ func handleSlaveConnection(c net.Conn) {
 		//pf = Password Found
 		if msgSplits[0] == "pf" {
 			fmt.Println("Password Found")
-			passwordFound(msgSplits[1])
+			passwordFoundBySlave(msgSplits[1], c)
 		} else if msgSplits[0] == "pnf" {
 			fmt.Println("Password NOT Found")
 			passwordNotFound(msgSplits[1])
 		}
 
 		defer func() {
-			fmt.Println("Slave has left.")
-			log.Printf("Connection from %v closed.\n", c.RemoteAddr())
+			log.Printf("Connection from Slave %v closed.\n", c.RemoteAddr())
 			delete(slaves, c)
 		}()
 
@@ -143,8 +151,7 @@ func handleClientConnection(c net.Conn) {
 		go sendPasswordToSlaves(password)
 
 		defer func() {
-			fmt.Println("Client has left.")
-			log.Printf("Connection from %v closed.\n", c.RemoteAddr())
+			log.Printf("Connection from Client %v closed.\n", c.RemoteAddr())
 			delete(clients, c)
 		}()
 	}
