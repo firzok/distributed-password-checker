@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -94,6 +95,8 @@ func handleSlaveOperations(c net.Conn, searchchan chan SearchQuery, stopSearchCh
 }
 
 func main() {
+	var slavePort string
+	flag.StringVar(&slavePort, "slavePort", "8001", "Port on which slave will connect to server.")
 
 	files, err := ioutil.ReadDir("./passwordSplitFiles/")
 	if err != nil {
@@ -110,7 +113,7 @@ func main() {
 
 	fmt.Println(fileNames)
 
-	conn, err := net.Dial("tcp", "127.0.0.1:8002")
+	conn, err := net.Dial("tcp", "127.0.0.1:"+slavePort)
 	if err != nil {
 		fmt.Println("ERROR: Connecting to Server")
 		return

@@ -1,6 +1,7 @@
 package main // templates
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -100,7 +101,6 @@ func passwordFoundBySlave(password string, slaveConn net.Conn) {
 			k.Write([]byte("pf:" + password))
 		}
 	}
-
 	//all files back to not searched for new search
 	for k := range slaveFiles {
 		slaveFiles[k] = false
@@ -133,6 +133,18 @@ func passwordNotFound(password string) {
 			c.conn.Write([]byte("pnf"))
 		}
 	}
+
+	for k := range slaves {
+		//all slaves back to free to search for new search
+		t := slaves[k]
+		t.freeToSearch = true
+		slaves[k] = t
+
+	}
+	//all files back to not searched for new search
+	for k := range slaveFiles {
+		slaveFiles[k] = false
+	}
 }
 
 func handleSlaveConnection(c net.Conn) {
@@ -149,7 +161,7 @@ func handleSlaveConnection(c net.Conn) {
 	filesArray := strings.Split(files, ",")
 	currentSlave := Slave{filesArray, c, true}
 	slaves[c] = currentSlave
-	fmt.Println("Files: ", filesArray)
+	fmt.Println("Files from Slaves: ", filesArray)
 	for _, f := range filesArray {
 		slaveFiles[f] = false
 	}
@@ -193,9 +205,9 @@ func handleSlaveConnection(c net.Conn) {
 	}
 }
 
-func handleSlaves() {
+func handleSlaves(slavePort string) {
 
-	ln, err := net.Listen("tcp", "127.0.0.1:8002")
+	ln, err := net.Listen("tcp", "127.0.0.1:"+slavePort)
 	if err != nil {
 		// handle error
 	}
@@ -236,9 +248,17 @@ func handleClientConnection(c net.Conn) {
 
 func main() {
 
-	go handleSlaves()
+	var clientPort string
+	var slavePort string
+	flag.StringVar(&clientPort, "clientPort", "8000", "Port on which server will listen for client connection.")
+	flag.StringVar(&slavePort, "slavePort", "8001", "Port on which server will listen for slave connection.")
 
-	ln, err := net.Listen("tcp", "127.0.0.1:8003")
+	flag.Parse()
+	fmt.Println("Running server...\nListening for Clients on port: " + clientPort + "\nListening for Slaves on port: " + slavePort)
+
+	go handleSlaves(slavePort)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:"+clientPort)
 	if err != nil {
 		// handle error
 	}
