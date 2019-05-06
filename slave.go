@@ -95,8 +95,9 @@ func handleSlaveOperations(c net.Conn, searchchan chan SearchQuery, stopSearchCh
 }
 
 func main() {
-	var slavePort string
-	flag.StringVar(&slavePort, "slavePort", "8001", "Port on which slave will connect to server.")
+	var serverPort string
+	flag.StringVar(&serverPort, "serverPort", "8001", "Port on which slave will connect to server.")
+	flag.Parse()
 
 	files, err := ioutil.ReadDir("./passwordSplitFiles/")
 	if err != nil {
@@ -111,9 +112,10 @@ func main() {
 		}
 	}
 
-	fmt.Println(fileNames)
+	fmt.Println("Files: ", fileNames)
+	fmt.Println("Connecting to Server on Port: " + serverPort)
 
-	conn, err := net.Dial("tcp", "127.0.0.1:"+slavePort)
+	conn, err := net.Dial("tcp", "127.0.0.1:"+serverPort)
 	if err != nil {
 		fmt.Println("ERROR: Connecting to Server")
 		return
