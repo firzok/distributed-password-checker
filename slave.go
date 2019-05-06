@@ -9,11 +9,32 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
 
 type SearchQuery struct {
 	password string
 	fileName string
+}
+
+func sendHeartBeats(c net.Conn, quit chan struct{}) {
+
+	//send heartbeats every 5 seconds
+	ticker := time.NewTicker(5 * time.Second)
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+
+				c.Write([]byte("hb"))
+
+			case <-quit:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
 }
 
 func searchPasswordInFile(password string, file string, stopSearchChan chan string) int {
@@ -83,25 +104,23 @@ func handleSlaveOperations(c net.Conn, searchchan chan SearchQuery, stopSearchCh
 		}
 		command := strings.Split(string(buf[0:n]), ":")
 		fmt.Println(command)
-		if command[0] == "s" {
+		if command[0] == "s" { //search
 			search := SearchQuery{command[1], command[2]}
 			searchchan <- search
 
-		} else if command[0] == "pf" {
+		} else if command[0] == "pf" { //password found
 			stopSearchChan <- command[1]
+		} else if command[0] == "sf" { //send files
+			fileNames := getFileNames()
+			fmt.Println("Files: ", fileNames)
+			c.Write([]byte("f:" + fileNames))
+
 		}
 
 	}
 }
 
-func main() {
-	var serverPort string
-	var serverIP string
-
-	flag.StringVar(&serverPort, "serverPort", "8001", "Port on which slave will connect to server.")
-	flag.StringVar(&serverIP, "serverIP", "127.0.0.1", "IP on which slave will connect to server.")
-	flag.Parse()
-
+func getFileNames() string {
 	files, err := ioutil.ReadDir("./passwordSplitFiles/")
 	if err != nil {
 		log.Fatal(err)
@@ -114,6 +133,19 @@ func main() {
 			fileNames += ","
 		}
 	}
+
+	return fileNames
+}
+
+func main() {
+	var serverPort string
+	var serverIP string
+
+	flag.StringVar(&serverPort, "serverPort", "8001", "Port on which slave will connect to server.")
+	flag.StringVar(&serverIP, "serverIP", "127.0.0.1", "IP on which slave will connect to server.")
+	flag.Parse()
+
+	fileNames := getFileNames()
 
 	fmt.Println("Files: ", fileNames)
 	fmt.Println("Connecting to Server on Port: " + serverPort)
@@ -129,6 +161,10 @@ func main() {
 	stopSearchChan := make(chan string)
 
 	go performSlaveoperations(conn, searchchan, stopSearchChan)
+
+	stopHeartBeat := make(chan struct{})
+
+	go sendHeartBeats(conn, stopHeartBeat)
 
 	handleSlaveOperations(conn, searchchan, stopSearchChan)
 

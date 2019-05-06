@@ -169,10 +169,13 @@ func handleSlaveConnection(c net.Conn) {
 	slaves[c] = currentSlave
 	fmt.Println("Files from Slaves: ", filesArray)
 	for _, f := range filesArray {
-		slaveFiles[f] = false
+		if _, ok := slaveFiles[f]; !ok {
+			slaveFiles[f] = false
+		}
+
 	}
 
-	fmt.Println("slaveFiles", slaveFiles)
+	// fmt.Println("slaveFiles", slaveFiles)
 
 	for {
 		n, err := c.Read(buf)
@@ -188,9 +191,11 @@ func handleSlaveConnection(c net.Conn) {
 		//pf = Password Found
 		if msgSplits[0] == "pf" {
 			fmt.Println("Password Found")
+			slaveFiles[msgSplits[2]] = true
 			passwordFoundBySlave(msgSplits[1], c)
 		} else if msgSplits[0] == "pnf" { //password not found
 			fmt.Println("Password NOT Found")
+			slaveFiles[msgSplits[2]] = true
 
 			//setting slave free again to search
 			for k := range slaves {
@@ -274,12 +279,12 @@ func checkAliveSlaves() {
 		for {
 			select {
 			case <-ticker.C:
+				fmt.Println("slaveFiles:::", slaveFiles)
 				for k := range slaves {
 					if !slaves[k].alive {
 						if slaves[k].currentSearchFile != "" {
-							fmt.Println("slaveFiles:::", slaveFiles)
+
 							slaveFiles[slaves[k].currentSearchFile] = false
-							fmt.Println("slaveFiles:::", slaveFiles)
 
 						}
 						deleteSlave(k)
@@ -294,6 +299,7 @@ func checkAliveSlaves() {
 					slaves[k] = t
 
 				}
+				fmt.Println("slaveFiles:::", slaveFiles)
 			case <-quit:
 				ticker.Stop()
 				return
