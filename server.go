@@ -207,7 +207,7 @@ func handleSlaveConnection(c net.Conn) {
 
 func handleSlaves(slavePort string) {
 
-	ln, err := net.Listen("tcp", "127.0.0.1:"+slavePort)
+	ln, err := net.Listen("tcp", "192.168.43.62:"+slavePort)
 	if err != nil {
 		// handle error
 	}
@@ -246,7 +246,20 @@ func handleClientConnection(c net.Conn) {
 
 }
 
+func GetOutboundIP() net.IP {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	return localAddr.IP
+}
+
 func main() {
+	myIP := string(GetOutboundIP())
 
 	var clientPort string
 	var slavePort string
@@ -254,7 +267,7 @@ func main() {
 	flag.StringVar(&slavePort, "slavePort", "8001", "Port on which server will listen for slave connection.")
 
 	flag.Parse()
-	fmt.Println("Running server...\nListening for Clients on port: " + clientPort + "\nListening for Slaves on port: " + slavePort)
+	fmt.Println("Running server...\nListening for Clients on localhost: " + clientPort + "\nListening for Slaves on " + myIP + ": " + slavePort)
 
 	go handleSlaves(slavePort)
 
