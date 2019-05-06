@@ -10,61 +10,25 @@ import (
 	"net/http"
 )
 
-var pwned = make(chan bool, 1)
-
-// func wait(w http.ResponseWriter, r *http.Request) {
-// 	fmt.Println("wait", r.Method)
-//
-// 	if r.Method == "POST" {
-//
-// 		r.ParseForm()
-// 		password := r.Form["password"][0]
-//
-// 		http.ServeFile(w, r, "wait.html")
-//
-// 		fmt.Println("password:", password)
-// 		result := sendPasswordToServer(password)
-//
-// 		if result == "pf" {
-// 			fmt.Println("You password has been PWNED1.")
-// 			pwned <- true
-//
-// 		} else {
-// 			fmt.Println("You password is secure1.")
-// 			pwned <- false
-// 		}
-//
-// 	} else {
-// 		select {
-// 		default:
-// 			http.ServeFile(w, r, "wait.html")
-// 		case t := <-pwned:
-//
-// 			if t {
-// 				http.ServeFile(w, r, "pwned.html")
-// 			} else {
-// 				http.ServeFile(w, r, "secure.html")
-// 			}
-//
-// 		}
-// 	}
-//
-// }
+var page = make(chan string, 1)
 
 func getPassword(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("method:", r.Method) //get request method
+	// fmt.Println(<-page)
 	if r.Method == "GET" {
 
 		select {
 		default:
 			http.ServeFile(w, r, "login.html")
 
-		case t := <-pwned:
+		case t := <-page:
 
-			if t {
+			if t == "login" {
+				http.ServeFile(w, r, "login.html")
+			} else if t == "pwned" {
 				http.ServeFile(w, r, "pwned.html")
-			} else {
+			} else if t == "secure" {
 				http.ServeFile(w, r, "secure.html")
 			}
 
@@ -85,11 +49,11 @@ func getPassword(w http.ResponseWriter, r *http.Request) {
 
 		if result == "pf" {
 			fmt.Println("You password has been PWNED.")
-			pwned <- true
+			page <- "pwned"
 
 		} else {
 			fmt.Println("You password is secure.")
-			pwned <- false
+			page <- "secure"
 
 		}
 
@@ -121,6 +85,7 @@ func sendPasswordToServer(password string) string {
 var serverPort string
 
 func main() {
+	page <- "login"
 	var clientPort string
 
 	flag.StringVar(&clientPort, "clientPort", "9090", "Port on which client will run on localhost.")
@@ -134,7 +99,8 @@ func main() {
 		http.ServeFile(w, r, "pwned.html")
 	})
 
-	http.HandleFunc("/", getPassword)                // setting password getting function
+	http.HandleFunc("/", getPassword) // setting password getting function
+	http.HandleFunc("/pass", getPassword)
 	err1 := http.ListenAndServe(":"+clientPort, nil) // setting port
 
 	if err1 != nil {
