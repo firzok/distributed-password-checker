@@ -20,12 +20,13 @@ type Slave struct {
 
 //Client is struct for clients being currently connected to server
 type Client struct {
-	password string   //Password to be searched
-	conn     net.Conn // Connection for sending result back to client
+	password    string          //Password to be searched
+	conn        net.Conn        // Connection for sending result back to client
+	searchFiles map[string]bool //files that are yet to be searched for this client
 }
 
-var clients = make(map[net.Conn]Client)
-var slaves = make(map[net.Conn]Slave)
+var clients []Client
+var slaves []Slave
 
 //all files that all slaves have and value is that either they have been searched or not
 var slaveFiles = make(map[string]bool)
@@ -53,32 +54,35 @@ func stringInSlice(a string, list []string) bool {
 	return false
 }
 
-func sendPasswordToSlaves(password string) {
+func sendPasswordToSlaves(client Client) {
+
+	password := client.password
+	fmt.Println("test", password)
 
 	//loop over all slaves
-	for k, v := range slaves {
+	for slaveIndex, slave := range slaves {
 
 		//if that slave is free to search
-		if v.freeToSearch {
+		if slave.freeToSearch {
+			fmt.Println("test", "free to search")
 
 			//loop over all the Slave files
-			for fileName, searched := range slaveFiles {
+			for fileName, searched := range client.searchFiles {
+				fmt.Println("test", searched, stringInSlice(fileName, slave.files))
 
 				//if that file has not yet been searched and the slave has that file then search that file for password
-				if !searched && stringInSlice(fileName, v.files) {
-
-					fmt.Println("Password sent to slave", fileName)
+				if !searched && stringInSlice(fileName, slave.files) {
 					//sending command to search for password in that file
-					k.Write([]byte("s:" + password + ":" + fileName))
+					slave.conn.Write([]byte("s:" + password + ":" + fileName))
+					fmt.Println("Password sent to slave to be searched in", fileName)
 
 					//not free to search anymore
-					t := slaves[k]
-					t.freeToSearch = false
-					t.currentSearchFile = fileName
-					slaves[k] = t
+
+					slaves[slaveIndex].freeToSearch = false
+					slaves[slaveIndex].currentSearchFile = fileName
 
 					//file has been searched
-					slaveFiles[fileName] = true
+					client.searchFiles[fileName] = true
 					break
 				}
 			}
@@ -87,41 +91,46 @@ func sendPasswordToSlaves(password string) {
 }
 
 func passwordFoundBySlave(password string, slaveConn net.Conn) {
-	for _, c := range clients {
-		if c.password == password {
+	for _, client := range clients {
+		if client.password == password {
 			fmt.Println("Result sent to Client")
-			c.conn.Write([]byte("pf"))
+			client.conn.Write([]byte("pf"))
 		}
 	}
 
 	//Telling all slaves(except the one that found it) that password is found so stop searching
-	for k := range slaves {
+	for slaveIndex, slave := range slaves {
 		//all slaves back to free to search for new search
-		t := slaves[k]
-		t.freeToSearch = true
-		t.currentSearchFile = ""
-		slaves[k] = t
-		if k != slaveConn {
+		slaves[slaveIndex].freeToSearch = true
+		slaves[slaveIndex].currentSearchFile = ""
+		if slave.conn != slaveConn {
 			fmt.Println("Stop search request sent to slave")
-			k.Write([]byte("pf:" + password))
+			slave.conn.Write([]byte("pf:" + password))
 		}
 	}
 	//all files back to not searched for new search
-	for k := range slaveFiles {
-		slaveFiles[k] = false
-	}
+	// for k := range slaveFiles {
+	// 	slaveFiles[k] = false
+	// }
 
 }
 
 func passwordNotFound(password string) {
 
-	//loop over all slave files
-	for _, v := range slaveFiles {
+	var currentClientIndex = 0
+	for i, client := range clients {
+		if client.password == password {
+			currentClientIndex = i
+		}
+	}
+
+	//loop over all search files
+	for _, file := range clients[currentClientIndex].searchFiles {
 
 		//if any file has not yet been searched
-		if !v {
+		if !file {
 			//send password to be searched
-			sendPasswordToSlaves(password)
+			sendPasswordToSlaves(clients[currentClientIndex])
 			return
 		}
 	}
@@ -141,16 +150,15 @@ func passwordNotFound(password string) {
 
 	for k := range slaves {
 		//all slaves back to free to search for new search
-		t := slaves[k]
-		t.freeToSearch = true
-		t.currentSearchFile = ""
-		slaves[k] = t
+		slaves[k].freeToSearch = true
+		slaves[k].currentSearchFile = ""
 
 	}
 	//all files back to not searched for new search
 	for k := range slaveFiles {
 		slaveFiles[k] = false
 	}
+
 }
 
 func handleSlaveConnection(c net.Conn) {
@@ -166,7 +174,9 @@ func handleSlaveConnection(c net.Conn) {
 
 	filesArray := strings.Split(files, ",")
 	currentSlave := Slave{filesArray, c, true, true, ""}
-	slaves[c] = currentSlave
+
+	slaves = append(slaves, currentSlave)
+
 	fmt.Println("Files from Slaves: ", filesArray)
 	for _, f := range filesArray {
 		if _, ok := slaveFiles[f]; !ok {
@@ -191,11 +201,11 @@ func handleSlaveConnection(c net.Conn) {
 		//pf = Password Found
 		if msgSplits[0] == "pf" {
 			fmt.Println("Password Found")
-			slaveFiles[msgSplits[2]] = true
+			// slaveFiles[msgSplits[2]] = true
 			passwordFoundBySlave(msgSplits[1], c)
 		} else if msgSplits[0] == "pnf" { //password not found
 			fmt.Println("Password NOT Found")
-			slaveFiles[msgSplits[2]] = true
+			// slaveFiles[msgSplits[2]] = true
 
 			//setting slave free again to search
 			for k := range slaves {
@@ -207,7 +217,7 @@ func handleSlaveConnection(c net.Conn) {
 				}
 			}
 
-			fmt.Println("slaves", slaves)
+			// fmt.Println("slaves", slaves)
 
 			passwordNotFound(msgSplits[1])
 
@@ -249,9 +259,14 @@ func handleSlaveConnection(c net.Conn) {
 }
 
 //deletes slave from map, removes files related to it and reload slaveFiles from all connected slaves
-func deleteSlave(k net.Conn) {
-	slaveToBeDeleted := slaves[k]
-	delete(slaves, k)
+func deleteSlave(index int) {
+
+	slaveToBeDeleted := slaves[index]
+
+	// Remove slave from slaves array
+	slaves[index] = slaves[len(slaves)-1] // Copy last element to index i.
+	// slaves[len(slaves)-1] = nil           // Erase last element (write zero value).
+	slaves = slaves[:len(slaves)-1] // Truncate slice.
 
 	filesToBeDeleted := slaveToBeDeleted.files
 
@@ -266,8 +281,8 @@ func deleteSlave(k net.Conn) {
 	fmt.Println("Slave deleted", slaveToBeDeleted)
 
 	//ask all slaves to send respective files so that slaveFiles Map can be updated
-	for k := range slaves {
-		k.Write([]byte("sf"))
+	for _, v := range slaves {
+		v.conn.Write([]byte("sf"))
 	}
 }
 
@@ -279,14 +294,13 @@ func checkAliveSlaves() {
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Println("slaveFiles:::", slaveFiles)
 				for k := range slaves {
 					if !slaves[k].alive {
-						if slaves[k].currentSearchFile != "" {
-
-							slaveFiles[slaves[k].currentSearchFile] = false
-
-						}
+						// if slaves[k].currentSearchFile != "" {
+						//
+						// 	slaveFiles[slaves[k].currentSearchFile] = false
+						//
+						// }
 						deleteSlave(k)
 
 						fmt.Println("Dead slave deleted.")
@@ -294,12 +308,11 @@ func checkAliveSlaves() {
 				}
 				//Set all other slaves to be tested again if alive or not
 				for k := range slaves {
-					t := slaves[k]
-					t.alive = false
-					slaves[k] = t
+
+					slaves[k].alive = false
 
 				}
-				fmt.Println("slaveFiles:::", slaveFiles)
+				fmt.Println("slaveFiles::::", slaveFiles)
 			case <-quit:
 				ticker.Stop()
 				return
@@ -323,6 +336,13 @@ func handleSlaves(myIP string, slavePort string) {
 	}
 }
 
+func handlePendingClients() {
+	if len(clients) > 0 {
+		fmt.Println("Handling pending client requests")
+		sendPasswordToSlaves(clients[0])
+	}
+}
+
 func handleClientConnection(c net.Conn) {
 	buf := make([]byte, 4096)
 	for {
@@ -335,15 +355,31 @@ func handleClientConnection(c net.Conn) {
 
 		fmt.Println("Client Sent: ", password)
 
-		currentClient := Client{password, c}
-		//add to map
-		clients[c] = currentClient
+		var slaveFilesCopy = make(map[string]bool)
 
-		go sendPasswordToSlaves(password)
+		for k, v := range slaveFiles {
+			slaveFilesCopy[k] = v
+		}
+
+		currentClient := Client{password, c, slaveFilesCopy}
+		//add to array
+		clients = append(clients, currentClient)
+
+		go sendPasswordToSlaves(currentClient)
 
 		defer func() {
-			log.Printf("Connection from Client %v closed.\n", c.RemoteAddr())
-			delete(clients, c)
+			fmt.Println("Connection from Client closed.\n")
+
+			for k, v := range clients {
+				if v.conn == c {
+					clients[k] = clients[len(clients)-1]
+					clients = clients[:len(clients)-1]
+					break
+				}
+			}
+			fmt.Println("Client deleted from array.")
+
+			go handlePendingClients()
 		}()
 	}
 
@@ -366,26 +402,45 @@ func main() {
 	myIP := GetOutboundIP()
 	var clientPort string
 	var slavePort string
+	var localClient bool
 	flag.StringVar(&clientPort, "clientPort", "8000", "Port on which server will listen for client connection.")
 	flag.StringVar(&slavePort, "slavePort", "8001", "Port on which server will listen for slave connection.")
+	flag.BoolVar(&localClient, "localClient", true, "True if client is local, false otherwise.")
 
 	flag.Parse()
-	fmt.Println("Running server...\nListening for Clients on localhost: " + clientPort + "\nListening for Slaves on " + myIP + ": " + slavePort)
 
 	go handleSlaves(myIP, slavePort)
 
-	go checkAliveSlaves()
+	// go checkAliveSlaves()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:"+clientPort)
-	if err != nil {
-		// handle error
-	}
-	for {
-		conn, err := ln.Accept()
+	if localClient {
+		fmt.Println("Running server...\nListening for Clients on localhost:" + clientPort + "\nListening for Slaves on " + myIP + ":" + slavePort)
+
+		ln, err := net.Listen("tcp", "127.0.0.1:"+clientPort)
 		if err != nil {
 			// handle error
 		}
-		go handleClientConnection(conn)
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				// handle error
+			}
+			go handleClientConnection(conn)
+		}
+	} else {
+		fmt.Println("Running server...\nListening for Clients on " + myIP + ":" + clientPort + "\nListening for Slaves on " + myIP + ":" + slavePort)
+
+		ln, err := net.Listen("tcp", myIP+":"+clientPort)
+		if err != nil {
+			// handle error
+		}
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				// handle error
+			}
+			go handleClientConnection(conn)
+		}
 	}
 
 }
