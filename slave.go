@@ -41,6 +41,7 @@ func searchPasswordInFile(password string, file string, stopSearchChan chan stri
 	f, err := os.Open("./passwordSplitFiles/" + file)
 	if err != nil {
 		fmt.Println("Error opening file")
+		return 0
 	}
 	defer f.Close()
 
