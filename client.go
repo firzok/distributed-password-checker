@@ -91,7 +91,10 @@ func sendPasswordToServer(password string) string {
 		return "pf"
 	}
 	defer conn.Close()
+
+	fmt.Println("Connected to server...")
 	conn.Write([]byte(password))
+	fmt.Println("Password:" + password + " sent to server...")
 
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf)

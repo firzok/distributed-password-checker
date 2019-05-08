@@ -98,10 +98,15 @@ func passwordFoundBySlave(password string, slaveConn net.Conn) {
 
 func passwordNotFound(password string) {
 
+	if len(clients) < 1 {
+		return
+	}
+
 	var currentClientIndex = 0
 	for i, client := range clients {
 		if client.password == password {
 			currentClientIndex = i
+			break
 		}
 	}
 
@@ -189,13 +194,23 @@ func handleSlaveConnection(c net.Conn) {
 		} else if msgSplits[0] == "pnf" { //password not found
 			fmt.Println("Password::::" + msgSplits[1] + " NOT Found in:" + msgSplits[2])
 
+			//Setting file searched to be true so that no other slave searches this file
+			// if len(clients) > 0 {
+			// 	var currentClientIndex = 0
+			// 	for i, client := range clients {
+			// 		if client.password == msgSplits[1] {
+			// 			currentClientIndex = i
+			// 			break
+			// 		}
+			// 	}
+			// 	clients[currentClientIndex].searchFiles[msgSplits[2]] = true
+			// }
+
 			//setting slave free again to search
 			for k := range slaves {
 				if slaves[k].conn == c {
-					t := slaves[k]
-					t.currentSearchFile = ""
-					t.freeToSearch = true
-					slaves[k] = t
+					slaves[k].currentSearchFile = ""
+					slaves[k].freeToSearch = true
 				}
 			}
 			//send password again to be searched in some other file
@@ -369,8 +384,9 @@ func handleClientConnection(c net.Conn) {
 				}
 			}
 			fmt.Println("Client deleted from array.")
-
-			go handlePendingClients()
+			if len(clients) > 0 {
+				go handlePendingClients()
+			}
 		}()
 	}
 

@@ -38,12 +38,15 @@ func sendHeartBeats(c net.Conn, quit chan struct{}) {
 }
 
 func searchPasswordInFile(password string, file string, stopSearchChan chan string) int {
+
 	f, err := os.Open("./passwordSplitFiles/" + file)
 	if err != nil {
 		fmt.Println("Error opening file")
 		return 0
 	}
 	defer f.Close()
+
+	fmt.Println("Searching password " + password + "in file " + file)
 
 	// Splits on newlines by default.
 	scanner := bufio.NewScanner(f)
@@ -58,12 +61,15 @@ func searchPasswordInFile(password string, file string, stopSearchChan chan stri
 			}
 		default:
 			//check for password
-			fmt.Println(scanner.Text())
+			// fmt.Println(scanner.Text())
 			if scanner.Text() == password {
 				return 1
 			}
 		}
 
+	}
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 
 	return 0
